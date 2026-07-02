@@ -8,8 +8,44 @@ const api = axios.create({
 });
 
 // Attach JWT token to every request
-api.interceptors.request.use((config) => {
-  const tokens = JSON.parse(localStorage.getItem('tokens') || '{}');
+// api.interceptors.request.use((config) => {
+//   const tokens = JSON.parse(localStorage.getItem('tokens') || '{}');
+//   if (tokens.access) {
+//     config.headers.Authorization = `Bearer ${tokens.access}`;
+//   }
+//   return config;
+// });
+
+// Helper: check if JWT token expires within 60 seconds
+function isTokenExpiringSoon(token) {
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return Date.now() > (payload.exp * 1000) - 60_000;
+  } catch { return true; }
+}
+
+api.interceptors.request.use(async (config) => {
+  let tokens = JSON.parse(localStorage.getItem('tokens') || '{}');
+
+  // Proactively refresh if access token is expired/expiring
+  if (tokens.access && isTokenExpiringSoon(tokens.access) && tokens.refresh) {
+    try {
+      const res = await axios.post(`${API_BASE}/auth/refresh/`, 
+        { refresh: tokens.refresh }
+      );
+      tokens = { 
+        access: res.data.access, 
+        refresh: res.data.refresh || tokens.refresh 
+      };
+      localStorage.setItem('tokens', JSON.stringify(tokens));
+    } catch {
+      localStorage.clear();
+      window.location.href = '/login';
+      return Promise.reject('Session expired');
+    }
+  }
+
   if (tokens.access) {
     config.headers.Authorization = `Bearer ${tokens.access}`;
   }
