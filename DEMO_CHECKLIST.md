@@ -34,6 +34,12 @@ Run these in separate terminal windows:
 - [ ] **Hardware**:
   - Connect the ESP32 to power.
   - Open the Serial Monitor (115200 baud).
+- [ ] **Hardware Simulator (Fallback)**:
+  - If hardware is not available, you can simulate a helmet in a new terminal:
+  ```bash
+  cd backend
+  python manage.py simulate
+  ```
 
 ## 3. Core Functionality Checklist
 Verify each of these flows works flawlessly:

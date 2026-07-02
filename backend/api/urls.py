@@ -11,6 +11,7 @@ from .views import (
     AdminStatsView, AdminRiderListView, AdminRiderDetailView,
 )
 from .views.device import EmergencyContactViewSet
+from .views.root import api_root
 
 router = DefaultRouter()
 router.register(r'contacts', EmergencyContactViewSet, basename='contact')
@@ -23,7 +24,10 @@ urlpatterns = [
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/profile/', ProfileView.as_view(), name='profile'),
 
-    # CRUD endpoints (router)
+    # Public API root (no auth required — lists available routes)
+    path('', api_root, name='api-root'),
+
+    # CRUD endpoints (router — requires auth per view)
     path('', include(router.urls)),
 
     # ESP32 device endpoints (no auth required)
