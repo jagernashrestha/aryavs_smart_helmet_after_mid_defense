@@ -39,19 +39,19 @@ export default function SOSPage() {
           onClick={handleSOS}
           disabled={loading || triggered}
         >
-          {loading ? '...' : 'SOS'}
+          {loading ? 'Sending...' : 'SOS'}
         </button>
 
         <p className="sos-subtitle">
           {triggered
-            ? '🚨 Emergency alert has been sent! Your emergency contacts have been notified.'
-            : 'Press the SOS button to immediately alert your emergency contacts with your current location.'}
+            ? '🚨 Emergency SOS alert has been recorded on the server! Your helmet hardware handles physical SMS dispatch.'
+            : 'Press the SOS button to record an emergency alert on the server. SMS dispatch is handled directly by the helmet device hardware.'}
         </p>
 
         {triggered && result && (
           <div className="card" style={{width:'100%',maxWidth:500,textAlign:'left'}}>
             <h3 style={{marginBottom:16,display:'flex',alignItems:'center',gap:8}}>
-              <ShieldAlert size={20} style={{color:'var(--danger)'}} /> Alert Sent
+              <ShieldAlert size={20} style={{color:'var(--danger)'}} /> Alert Recorded
             </h3>
 
             {result.alert && (
@@ -68,10 +68,10 @@ export default function SOSPage() {
               </div>
             )}
 
-            {result.contacts_notified?.length > 0 && (
+            {result.contacts?.length > 0 && (
               <div>
-                <h4 style={{fontSize:14,color:'var(--text-secondary)',marginBottom:8}}>Contacts Notified:</h4>
-                {result.contacts_notified.map((c, i) => (
+                <h4 style={{fontSize:14,color:'var(--text-secondary)',marginBottom:8}}>Emergency Contacts:</h4>
+                {result.contacts.map((c, i) => (
                   <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderTop:'1px solid var(--border)'}}>
                     <Phone size={14} style={{color:'var(--success)'}} />
                     <span>{c.name}</span>

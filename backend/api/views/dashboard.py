@@ -61,28 +61,10 @@ class SensorHistoryView(APIView):
 
 class GPSHistoryView(APIView):
     def get(self, request):
-        # device = HelmetDevice.objects.filter(user=request.user).first()
-        # if not device:
-        #     return Response({'error': 'No device found'}, status=status.HTTP_404_NOT_FOUND)
         device = HelmetDevice.objects.filter(user=request.user).first()
-if not device:
-    return Response({
-        'device': None,
-        'latest_gps': None,
-        'total_alerts': 0,
-        'active_alerts': 0,
-        'alerts_today': 0,
-        'latest_alerts': [],
-        'sensor_data': [],
-        'message': 'No device registered. Run seed_data or register a device.',
-    })
-        device = HelmetDevice.objects.filter(user=request.user).first()
-if not device:
-    device = HelmetDevice.objects.filter(
-        user=request.user
-    ).first()
-    if not device:
-        device = HelmetDevice.objects.first()
+        if not device:
+            return Response({'error': 'No device found'}, status=status.HTTP_404_NOT_FOUND)
+
         hours = int(request.query_params.get('hours', 1))
         since = timezone.now() - timedelta(hours=hours)
 

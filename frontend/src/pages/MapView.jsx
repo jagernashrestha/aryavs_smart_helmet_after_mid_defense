@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { dashboardAPI } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
@@ -32,7 +32,7 @@ export default function MapView() {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const { subscribe } = useWebSocket();
-  const mapRef = { current: null };
+  const mapRef = useRef(null);
 
   useEffect(() => {
     Promise.all([
@@ -88,6 +88,7 @@ export default function MapView() {
           style={{height:'100%',width:'100%'}}
           ref={(map) => { mapRef.current = map; }}
         >
+          <MapUpdater center={center} mapRef={mapRef} />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/">OSM</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"

@@ -2,28 +2,28 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
-
-from ..models import HelmetDevice, Alert
+from ..permissions import HasDeviceSecret
+from ..models import Alert
 from ..serializers import AlertSerializer, AlertInputSerializer
+from ..services import get_device_or_404, create_alert
 from ..utils import broadcast_to_dashboard
 
 
 # ============ ALERT CREATE (ESP32 Endpoint) ============
 
 class AlertCreateView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [HasDeviceSecret]
 
     def post(self, request):
         serializer = AlertInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        try:
-            device = HelmetDevice.objects.get(device_id=data['device_id'])
-        except HelmetDevice.DoesNotExist:
+        device = get_device_or_404(data['device_id'])
+        if device is None:
             return Response({'error': 'Device not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        alert = Alert.objects.create(
+        alert = create_alert(
             device=device,
             alert_type=data['alert_type'],
             severity=data.get('severity', 'high'),
@@ -32,16 +32,6 @@ class AlertCreateView(APIView):
             message=data.get('message', ''),
             acc_magnitude=data.get('acc_magnitude', 0),
         )
-
-        broadcast_to_dashboard('alert', {
-            'id': alert.id,
-            'alert_type': alert.alert_type,
-            'severity': alert.severity,
-            'latitude': alert.latitude,
-            'longitude': alert.longitude,
-            'message': alert.message,
-            'created_at': alert.created_at.isoformat(),
-        })
 
         return Response(AlertSerializer(alert).data, status=status.HTTP_201_CREATED)
 
@@ -70,6 +60,13 @@ class AlertActionView(APIView):
             alert = Alert.objects.get(pk=pk, device__user=request.user)
         except Alert.DoesNotExist:
             return Response({'error': 'Alert not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # resolve/cancel only allowed when current status is active
+        if alert.status != 'active':
+            return Response(
+                {'error': f"Cannot perform action. Alert is already {alert.status}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         if action_type == 'resolve':
             alert.status = 'resolved'

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { adminAPI } from '../services/api';
 import {
   Users, Wifi, AlertTriangle, ShieldAlert, Search,
@@ -23,6 +24,7 @@ export default function AdminDashboard() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   useEffect(() => {
     Promise.all([
@@ -51,6 +53,15 @@ export default function AdminDashboard() {
     return (
       <div className="fade-in" style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>
         Loading admin dashboard...
+      </div>
+    );
+  }
+
+  if (!user?.is_staff) {
+    return (
+      <div className="fade-in" style={{ padding: 60, textAlign: 'center', color: 'var(--danger)' }}>
+        <ShieldAlert size={48} style={{ opacity: 0.5, marginBottom: 12 }} /><br />
+        Access Denied. You do not have administrator privileges.
       </div>
     );
   }

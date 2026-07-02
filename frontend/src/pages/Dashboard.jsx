@@ -28,6 +28,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const { subscribe } = useWebSocket();
 
+  const refreshStats = () => {
+    dashboardAPI.get().then(res => setData(res.data)).catch(() => {});
+  };
+
   useEffect(() => {
     dashboardAPI.get()
       .then(res => {
@@ -47,18 +51,17 @@ export default function Dashboard() {
       }]);
     });
     const unsub2 = subscribe('gps', (d) => setGps(d));
-    const unsub3 = subscribe('alert', (d) => {
-      setData(prev => prev ? {
-        ...prev,
-        active_alerts: prev.active_alerts + 1,
-        alerts_today: prev.alerts_today + 1,
-        latest_alerts: [d, ...prev.latest_alerts.slice(0, 9)],
-      } : prev);
-    });
-    return () => { unsub1(); unsub2(); unsub3(); };
+    const unsub3 = subscribe('alert', refreshStats);
+    const unsub4 = subscribe('alert_update', refreshStats);
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, [subscribe]);
 
-  if (loading) return <div className="fade-in" style={{padding:40,textAlign:'center',color:'var(--text-secondary)'}}>Loading dashboard...</div>;
+  if (loading) return (
+    <div className="fade-in" style={{padding:60,textAlign:'center',color:'var(--text-secondary)'}}>
+      <Activity size={32} style={{opacity:0.5, marginBottom:12, animation: 'pulse 2s infinite'}} /><br/>
+      Loading dashboard...
+    </div>
+  );
 
   const chartData = sensorData.map((s, i) => ({
     name: i,
@@ -115,18 +118,25 @@ export default function Dashboard() {
             <Activity size={18} style={{color:'var(--primary)'}} /> Accelerometer (Live)
           </h3>
           <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="name" tick={false} stroke="var(--text-muted)" />
-              <YAxis stroke="var(--text-muted)" domain={[-3, 3]} />
-              <Tooltip
-                contentStyle={{ background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text-primary)' }}
-              />
-              <Legend />
-              <Line type="monotone" dataKey="X" stroke="#6366f1" dot={false} strokeWidth={2} />
-              <Line type="monotone" dataKey="Y" stroke="#10b981" dot={false} strokeWidth={2} />
-              <Line type="monotone" dataKey="Z" stroke="#f59e0b" dot={false} strokeWidth={2} />
-            </LineChart>
+            {chartData.length > 0 ? (
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="name" tick={false} stroke="var(--text-muted)" />
+                <YAxis stroke="var(--text-muted)" domain={[-3, 3]} />
+                <Tooltip
+                  contentStyle={{ background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text-primary)' }}
+                />
+                <Legend />
+                <Line type="monotone" dataKey="X" stroke="#6366f1" dot={false} strokeWidth={2} />
+                <Line type="monotone" dataKey="Y" stroke="#10b981" dot={false} strokeWidth={2} />
+                <Line type="monotone" dataKey="Z" stroke="#f59e0b" dot={false} strokeWidth={2} />
+              </LineChart>
+            ) : (
+              <div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'var(--text-muted)'}}>
+                <Activity size={32} style={{opacity:0.2,marginBottom:8}} />
+                Waiting for live sensor data...
+              </div>
+            )}
           </ResponsiveContainer>
         </div>
 
@@ -141,7 +151,7 @@ export default function Dashboard() {
                 attribution='&copy; <a href="https://www.openstreetmap.org/">OSM</a>'
                 url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
               />
-              {gps && (
+              {gps ? (
                 <Marker position={[gps.latitude, gps.longitude]} icon={helmetIcon}>
                   <Popup>
                     <strong>SmartHelmetX</strong><br/>
@@ -149,6 +159,10 @@ export default function Dashboard() {
                     {gps.latitude?.toFixed(6)}, {gps.longitude?.toFixed(6)}
                   </Popup>
                 </Marker>
+              ) : (
+                <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:400,background:'rgba(0,0,0,0.7)',padding:'8px 16px',borderRadius:20,color:'white',fontSize:12}}>
+                  No GPS available yet
+                </div>
               )}
             </MapContainer>
           </div>

@@ -25,6 +25,10 @@ bool cancelPressed = false;
 float lastKnownLat = 0.0;
 float lastKnownLng = 0.0;
 
+// ---------- RUNTIME CONFIG VARIABLES ----------
+float currentFallThreshold = FALL_THRESHOLD;
+unsigned long currentNoMoveTimeMs = NO_MOVE_TIME_MS;
+
 // ============================================================
 // BLE CALLBACKS
 // ============================================================
@@ -97,7 +101,7 @@ String readGSMResponse(unsigned long timeout = 3000) {
 }
 
 // ============================================================
-// FIX BUG 3 — Ensure GPRS bearer is open before any HTTP call
+// GSM GPRS Configuration
 // ============================================================
 bool ensureGPRS() {
   // Query bearer status
@@ -143,7 +147,7 @@ bool httpPost(const String &endpoint, const String &body) {
     return false;
   }
 
-  // FIX BUG 3 — ensure GPRS is alive before every HTTP attempt
+  // Ensure GPRS is alive before every HTTP attempt
   if (!ensureGPRS()) {
     Serial.println("[HTTP] GPRS unavailable — skipping");
     return false;
@@ -158,9 +162,11 @@ bool httpPost(const String &endpoint, const String &body) {
   sendAT("AT+HTTPPARA=\"URL\",\"" + url + "\"", 500);
   sendAT("AT+HTTPPARA=\"CONTENT\",\"application/json\"", 500);
 
+  String headers = "X-Device-Secret: " + String(DEVICE_SECRET) + "\r\n";
   if (authToken.length() > 0) {
-    sendAT("AT+HTTPPARA=\"USERDATA\",\"Authorization: Bearer " + authToken + "\"", 500);
+    headers += "Authorization: Bearer " + authToken + "\r\n";
   }
+  sendAT("AT+HTTPPARA=\"USERDATA\",\"" + headers + "\"", 500);
 
   sendAT("AT+HTTPDATA=" + String(bodyLen) + ",5000", 1000);
   SerialGSM.print(body);
@@ -190,12 +196,83 @@ bool httpPost(const String &endpoint, const String &body) {
 }
 
 // ============================================================
-// LOGIN  (FIX BUG 3 — ensureGPRS called here too)
+// DEVICE CONFIG FETCH
+// ============================================================
+bool fetchDeviceConfigFromServer() {
+  if (!isGSMReady()) {
+    Serial.println("[CONFIG] GSM not registered — skipping config fetch");
+    return false;
+  }
+  if (!ensureGPRS()) {
+    Serial.println("[CONFIG] GPRS unavailable — skipping config fetch");
+    return false;
+  }
+
+  String url = "http://" + String(SERVER_IP) + ":" + String(SERVER_PORT) + "/api/device-config/" + String(DEVICE_ID) + "/";
+  Serial.println("[CONFIG] Fetching config from: " + url);
+
+  sendAT("AT+HTTPTERM", 500);
+  sendAT("AT+HTTPINIT", 1000);
+  sendAT("AT+HTTPPARA=\"CID\",1", 500);
+  sendAT("AT+HTTPPARA=\"URL\",\"" + url + "\"", 500);
+  sendAT("AT+HTTPPARA=\"USERDATA\",\"X-Device-Secret: " + String(DEVICE_SECRET) + "\r\n\"", 500);
+
+  sendAT("AT+HTTPACTION=0", 15000); // 0 = GET
+  String actionResp = readGSMResponse(10000);
+
+  if (actionResp.indexOf(",200,") == -1) {
+    Serial.println("[CONFIG] Fetch failed or not 200: " + actionResp);
+    sendAT("AT+HTTPTERM", 500);
+    return false;
+  }
+
+  sendAT("AT+HTTPREAD", 1000);
+  String response = readGSMResponse(5000);
+  sendAT("AT+HTTPTERM", 500);
+  Serial.println("[CONFIG] Response: " + response);
+
+  // Parse fall_threshold
+  int thresholdIdx = response.indexOf("\"fall_threshold\":");
+  if (thresholdIdx != -1) {
+    thresholdIdx += 17;
+    int endIdx = response.indexOf(",", thresholdIdx);
+    if (endIdx == -1) endIdx = response.indexOf("}", thresholdIdx);
+    if (endIdx != -1) {
+      String valStr = response.substring(thresholdIdx, endIdx);
+      float val = valStr.toFloat();
+      if (val > 0.0f) {
+        currentFallThreshold = val;
+        Serial.println("[CONFIG] Updated fall threshold to: " + String(currentFallThreshold));
+      }
+    }
+  }
+
+  // Parse no_move_timeout
+  int timeoutIdx = response.indexOf("\"no_move_timeout\":");
+  if (timeoutIdx != -1) {
+    timeoutIdx += 18;
+    int endIdx = response.indexOf(",", timeoutIdx);
+    if (endIdx == -1) endIdx = response.indexOf("}", timeoutIdx);
+    if (endIdx != -1) {
+      String valStr = response.substring(timeoutIdx, endIdx);
+      long val = valStr.toInt();
+      if (val > 0) {
+        currentNoMoveTimeMs = val;
+        Serial.println("[CONFIG] Updated no move timeout to: " + String(currentNoMoveTimeMs));
+      }
+    }
+  }
+
+  return true;
+}
+
+// ============================================================
+// LOGIN / AUTHENTICATION
 // ============================================================
 bool loginToServer() {
   Serial.println("[AUTH] Logging in...");
 
-  // FIX BUG 3 — verify GPRS before attempting login HTTP
+  // Verify GPRS before attempting login HTTP
   if (!ensureGPRS()) {
     Serial.println("[AUTH] GPRS not available — login aborted");
     return false;
@@ -231,6 +308,10 @@ bool loginToServer() {
     authToken     = response.substring(idx, response.indexOf("\"", idx));
     lastLoginTime = millis();
     Serial.println("[AUTH] Login OK — token length=" + String(authToken.length()));
+    
+    // Fetch device configuration thresholds after successful login
+    fetchDeviceConfigFromServer();
+    
     return true;
   }
 
@@ -272,42 +353,44 @@ void sendGPSToServer(float lat, float lng) {
 }
 
 // ============================================================
-// SOS  (FIX WARNING 1 — SMS-only fallback when token is missing)
+// SOS / ALERTS
 // ============================================================
 void sendSOSToServer(float lat, float lng) {
   String link = getGoogleMapsLink();
   String smsMsg = "ACCIDENT ALERT! SmartHelmetX detected a crash.\nLocation: " + link;
 
-  // FIX WARNING 1 — if token is missing, send SMS immediately and return
+  // If token is missing, execute SMS-only fallback immediately
   if (authToken.length() == 0) {
-    Serial.println("[SOS] No auth token — SMS-only fallback!");
+    Serial.println("[ALERT] No auth token — SMS-only fallback!");
     sendSMS(smsMsg);
     sendBLE(smsMsg);
     return;
   }
 
-  Serial.println("[SOS] Sending to server...");
+  Serial.println("[ALERT] Sending to server...");
 
   // Push latest GPS first
   sendGPSToServer(lat, lng);
   delay(500);
 
-  // Trigger SOS endpoint
+  // Trigger SOS endpoint (uses /api/alert/ for device-origin alerts)
   String body = "{\"device_id\":\"" + String(DEVICE_ID) + "\","
+                "\"alert_type\":\"fall\","
+                "\"severity\":\"critical\","
                 "\"message\":\"Crash detected!\","
                 "\"latitude\":"  + String(lat, 6) + ","
                 "\"longitude\":" + String(lng, 6) + "}";
 
-  bool serverOK = httpPost("/api/sos/", body);
+  bool serverOK = httpPost("/api/alert/", body);
 
   // Always send SMS regardless of server result (safety-critical fallback)
   sendSMS(smsMsg);
   sendBLE(smsMsg);
 
   if (serverOK) {
-    Serial.println("[SOS] Server alert sent OK");
+    Serial.println("[ALERT] Server alert sent OK");
   } else {
-    Serial.println("[SOS] Server alert failed — SMS still sent");
+    Serial.println("[ALERT] Server alert failed — SMS still sent");
   }
 }
 
@@ -350,9 +433,7 @@ void sendSMS(const String &text) {
 
 // ============================================================
 // FALL DETECTION
-// FIX BUG 1  — use NO_MOVE_TIME_MS from config.h (was hardcoded 10000)
-// FIX BUG 2  — removed wrong mpu.begin() return check
-// FIX WARNING 2 — added no-movement stillness confirmation phase
+// Uses configurable NO_MOVE_TIME_MS and includes stillness confirmation
 // ============================================================
 bool detectFall() {
   mpu.update();
@@ -363,14 +444,14 @@ bool detectFall() {
   float magnitude = sqrt(ax * ax + ay * ay + az * az);
 
   // 60-second cooldown between alerts
-  if (magnitude <= FALL_THRESHOLD || (millis() - lastAlertTime <= 60000)) {
+  if (magnitude <= currentFallThreshold || (millis() - lastAlertTime <= 60000)) {
     return false;
   }
 
   Serial.printf("[FALL] Impact detected! mag=%.2f ax=%.2f ay=%.2f az=%.2f\n",
                 magnitude, ax, ay, az);
 
-  // ── FIX WARNING 2: No-movement stillness confirmation ──────────────────
+  // ── No-movement stillness confirmation ──────────────────
   // After the spike, check for 2 seconds that the rider is no longer moving.
   // A pothole/bump will show continued high movement; a real fall goes still.
   Serial.println("[FALL] Checking stillness (2s)...");
@@ -408,7 +489,7 @@ void setup() {
   // ── MPU6050 ─────────────────────────────────────────────────────────────
   Wire.begin(MPU_SDA, MPU_SCL);
 
-  // FIX BUG 2 — mpu.begin() returns void; use Wire probe to detect presence
+  // mpu.begin() returns void; use Wire probe to detect I2C presence
   Wire.beginTransmission(0x68);  // MPU6050 default I2C address
   uint8_t i2cError = Wire.endTransmission();
   if (i2cError != 0) {
@@ -440,7 +521,7 @@ void setup() {
   sendAT("AT",       1000);
   sendAT("AT+CREG?", 1000);
 
-  // FIX BUG 3 — initial GPRS setup via ensureGPRS() instead of inline AT calls
+  // Initial GPRS setup via ensureGPRS() instead of inline AT calls
   // (so the same logic is reused on every subsequent reconnect)
   ensureGPRS();
 
@@ -487,16 +568,16 @@ void loop() {
     // Start intermittent buzzer to alert rider
     digitalWrite(BUZZER_PIN, HIGH);
     sendBLE("ALERT: Possible accident! Press cancel button within " +
-            String(NO_MOVE_TIME_MS / 1000) + " seconds.");
+            String(currentNoMoveTimeMs / 1000) + " seconds.");
 
-    // FIX BUG 1 — use NO_MOVE_TIME_MS from config.h (was hardcoded 10000ms)
-    Serial.println("[FALL] Waiting " + String(NO_MOVE_TIME_MS / 1000) + "s for cancel...");
+    // Wait for cancel window
+    Serial.println("[FALL] Waiting " + String(currentNoMoveTimeMs / 1000) + "s for cancel...");
 
     cancelPressed        = false;
     unsigned long waitStart   = millis();
     unsigned long buzzerTimer = millis();
 
-    while (millis() - waitStart < NO_MOVE_TIME_MS) {
+    while (millis() - waitStart < currentNoMoveTimeMs) {
       readGPS();
 
       if (digitalRead(CANCEL_BTN) == LOW) {
@@ -522,7 +603,7 @@ void loop() {
       float lat = lastKnownLat;
       float lng = lastKnownLng;
 
-      // FIX WARNING 1 — sendSOSToServer handles SMS fallback internally
+      // sendSOSToServer handles SMS fallback internally if network fails
       sendSOSToServer(lat, lng);
 
       // Update cooldown AFTER alert sent

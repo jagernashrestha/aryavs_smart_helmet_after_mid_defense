@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { adminAPI } from '../services/api';
 import {
   ArrowLeft, User, Phone, MapPin, Droplets, CreditCard, Shield,
@@ -33,6 +34,7 @@ export default function AdminRiderDetail() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     adminAPI.riderDetail(riderId)
@@ -58,6 +60,15 @@ export default function AdminRiderDetail() {
     return (
       <div className="fade-in" style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>
         Loading rider details...
+      </div>
+    );
+  }
+
+  if (!user?.is_staff) {
+    return (
+      <div className="fade-in" style={{ padding: 60, textAlign: 'center', color: 'var(--danger)' }}>
+        <Shield size={48} style={{ opacity: 0.5, marginBottom: 12 }} /><br />
+        Access Denied. You do not have administrator privileges.
       </div>
     );
   }

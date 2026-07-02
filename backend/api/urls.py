@@ -1,9 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .views import (
     RegisterView, ProfileView,
-    DeviceViewSet, SensorDataView, GPSDataView,
+    DeviceViewSet, SensorDataView, GPSDataView, DeviceConfigView,
     AlertCreateView, AlertListView, AlertActionView,
     DashboardView, SensorHistoryView, GPSHistoryView,
     SOSTriggerView,
@@ -18,6 +19,8 @@ router.register(r'devices', DeviceViewSet, basename='device')
 urlpatterns = [
     # Auth
     path('auth/register/', RegisterView.as_view(), name='register'),
+    path('auth/login/', TokenObtainPairView.as_view(), name='login'),
+    path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/profile/', ProfileView.as_view(), name='profile'),
 
     # CRUD endpoints (router)
@@ -27,6 +30,7 @@ urlpatterns = [
     path('sensor-data/', SensorDataView.as_view(), name='sensor-data'),
     path('gps/', GPSDataView.as_view(), name='gps-data'),
     path('alert/', AlertCreateView.as_view(), name='alert-create'),
+    path('device-config/<str:device_id>/', DeviceConfigView.as_view(), name='device-config'),
 
     # Dashboard & history
     path('dashboard/', DashboardView.as_view(), name='dashboard'),

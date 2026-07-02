@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { alertsAPI } from '../services/api';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { Bell, CheckCircle, XCircle, Filter } from 'lucide-react';
 
 export default function Alerts() {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const { subscribe } = useWebSocket();
 
   const fetchAlerts = () => {
     const params = filter !== 'all' ? { status: filter } : {};
@@ -16,6 +18,15 @@ export default function Alerts() {
   };
 
   useEffect(() => { fetchAlerts(); }, [filter]);
+
+  useEffect(() => {
+    const unsubAlert = subscribe('alert', () => fetchAlerts());
+    const unsubUpdate = subscribe('alert_update', () => fetchAlerts());
+    return () => {
+      unsubAlert();
+      unsubUpdate();
+    };
+  }, [subscribe, filter]);
 
   const handleResolve = async (id) => {
     await alertsAPI.resolve(id);
@@ -48,11 +59,14 @@ export default function Alerts() {
 
       <div className="card">
         {loading ? (
-          <div style={{padding:32,textAlign:'center',color:'var(--text-muted)'}}>Loading alerts...</div>
+          <div style={{padding:60,textAlign:'center',color:'var(--text-secondary)'}}>
+            <Bell size={32} style={{opacity:0.5, marginBottom:12, animation: 'pulse 2s infinite'}} /><br/>
+            Loading alerts...
+          </div>
         ) : alerts.length === 0 ? (
-          <div style={{padding:48,textAlign:'center',color:'var(--text-muted)'}}>
+          <div style={{padding:60,textAlign:'center',color:'var(--text-muted)'}}>
             <Bell size={48} style={{opacity:0.3,marginBottom:12}} /><br/>
-            No alerts found
+            {filter === 'all' ? 'No alerts recorded yet — all clear! 🎉' : `No ${filter} alerts found`}
           </div>
         ) : (
           <div className="table-container">

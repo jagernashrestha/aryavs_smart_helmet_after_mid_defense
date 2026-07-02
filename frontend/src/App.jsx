@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { WebSocketProvider } from './context/WebSocketContext';
 import { useWebSocket } from './hooks/useWebSocket';
 import ProtectedRoute from './components/ProtectedRoute';
 import Sidebar from './components/Sidebar';
@@ -28,23 +29,25 @@ function AppLayout() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/map" element={<MapView />} />
-            <Route path="/alerts" element={<Alerts />} />
-            <Route path="/sos" element={<SOSPage />} />
-            <Route path="/settings" element={<Settings />} />
-            {/* Admin routes */}
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin/riders" element={<AdminDashboard />} />
-            <Route path="/admin/riders/:riderId" element={<AdminRiderDetail />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <WebSocketProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/map" element={<MapView />} />
+              <Route path="/alerts" element={<Alerts />} />
+              <Route path="/sos" element={<SOSPage />} />
+              <Route path="/settings" element={<Settings />} />
+              {/* Admin routes */}
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/riders" element={<AdminDashboard />} />
+              <Route path="/admin/riders/:riderId" element={<AdminRiderDetail />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </WebSocketProvider>
     </AuthProvider>
   );
 }

@@ -108,9 +108,23 @@ class GPSLocationSerializer(serializers.ModelSerializer):
 class GPSInputSerializer(serializers.Serializer):
     """For ESP32 posting GPS data."""
     device_id = serializers.CharField()
-    latitude = serializers.FloatField()
-    longitude = serializers.FloatField()
-    speed = serializers.FloatField(default=0)
+    latitude  = serializers.FloatField(
+        min_value=-90,
+        max_value=90,
+        error_messages={
+            'min_value': 'Latitude must be between -90 and 90.',
+            'max_value': 'Latitude must be between -90 and 90.',
+        }
+    )
+    longitude = serializers.FloatField(
+        min_value=-180,
+        max_value=180,
+        error_messages={
+            'min_value': 'Longitude must be between -180 and 180.',
+            'max_value': 'Longitude must be between -180 and 180.',
+        }
+    )
+    speed    = serializers.FloatField(default=0)
     altitude = serializers.FloatField(default=0)
     accuracy = serializers.FloatField(default=0)
 

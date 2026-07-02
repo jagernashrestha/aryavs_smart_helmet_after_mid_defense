@@ -125,34 +125,7 @@ class Command(BaseCommand):
         else:
             self.stdout.write("Emergency contact already exists.")
 
-        # --- Ensure jagerna user has profile and device if they exist ---
-        try:
-            jagerna = User.objects.get(username='jagerna')
-            if not hasattr(jagerna, 'rider_profile'):
-                RiderProfile.objects.create(
-                    user=jagerna,
-                    rider_id=RiderProfile.generate_rider_id(),
-                    phone='+9779841240126',
-                )
-                self.stdout.write(self.style.SUCCESS("Created rider profile for jagerna"))
-            
-            j_device, j_created = HelmetDevice.objects.get_or_create(
-                device_id='helmet_001',
-                defaults={
-                    'user': jagerna,
-                    'name': 'SmartHelmetX',
-                    'status': 'online',
-                }
-            )
-            if j_created:
-                self.stdout.write(self.style.SUCCESS("Created device helmet_001 for jagerna"))
-            else:
-                j_device.status = 'online'
-                j_device.save(update_fields=['status', 'last_seen'])
-                self.stdout.write("Device helmet_001 already exists for jagerna — set to online.")
-        except User.DoesNotExist:
-            pass
-
+        # --- (Removed hardcoded jagerna user check to rely on rider1 as primary prototype user) ---
 
         # --- Create sample riders ---
         self.stdout.write(self.style.MIGRATE_HEADING("\nCreating sample riders..."))
@@ -194,7 +167,7 @@ class Command(BaseCommand):
                 ))
 
             # Device
-            device_id = f'SHX-{user.id:04d}'
+            device_id = 'helmet_001' if rider_data['username'] == 'rider1' else f'SHX-{user.id:04d}'
             device, dev_created = HelmetDevice.objects.get_or_create(
                 device_id=device_id,
                 defaults={

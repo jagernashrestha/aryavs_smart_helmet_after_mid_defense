@@ -128,6 +128,7 @@ The app will be available at:
 | POST   | `/api/auth/login/`                | No       | JWT token obtain           |
 | POST   | `/api/auth/refresh/`              | No       | JWT token refresh          |
 | GET    | `/api/auth/profile/`              | Yes      | Get user profile           |
+| PUT    | `/api/auth/profile/`              | Yes      | Update user profile        |
 | GET    | `/api/dashboard/`                 | Yes      | Dashboard summary          |
 | POST   | `/api/sensor-data/`               | No (ESP) | Post sensor readings       |
 | POST   | `/api/gps/`                       | No (ESP) | Post GPS location          |

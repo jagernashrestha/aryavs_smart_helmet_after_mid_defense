@@ -12,7 +12,9 @@ from django.core.management.base import BaseCommand
 
 
 API_BASE = "http://127.0.0.1:8000/api"
-DEVICE_ID = "SHX-0001"
+DEVICE_ID = "helmet_001"
+DEVICE_SECRET = "smarthelmet-proto-secret-123"
+HEADERS = {"X-Device-Secret": DEVICE_SECRET}
 
 # Kathmandu area coordinates
 BASE_LAT = 27.7172
@@ -94,7 +96,7 @@ class Command(BaseCommand):
                         "gyro_x": round(gyro_x, 2),
                         "gyro_y": round(gyro_y, 2),
                         "gyro_z": round(gyro_z, 2),
-                    }, timeout=10)
+                    }, headers=HEADERS, timeout=10)
                 except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
                     self.stdout.write(self.style.WARNING("[!] Cannot connect to API server"))
                     time.sleep(interval)
@@ -109,7 +111,7 @@ class Command(BaseCommand):
                         "speed": round(speed, 1),
                         "altitude": 1400 + random.uniform(-10, 10),
                         "accuracy": random.uniform(2, 10),
-                    }, timeout=10)
+                    }, headers=HEADERS, timeout=10)
                 except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
                     pass
 
@@ -126,7 +128,7 @@ class Command(BaseCommand):
                             "longitude": round(lng, 6),
                             "message": f"{'Fall' if alert_type == 'fall' else 'High impact'} detected! G-force: {mag:.2f}g",
                             "acc_magnitude": round(mag, 2),
-                        }, timeout=10)
+                        }, headers=HEADERS, timeout=10)
                     except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
                         pass
 
