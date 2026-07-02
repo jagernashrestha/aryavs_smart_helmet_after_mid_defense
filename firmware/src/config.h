@@ -11,6 +11,13 @@
 #define BUZZER_PIN  5
 #define CANCEL_BTN  4
 
+// ---------- DEMO LED & SENSOR PINS ----------
+#define RED_LED         12  // Fall/Alert active
+#define GREEN_LED       13  // System powered
+#define BLUE_LED        14  // GPS fix valid
+#define YELLOW_LED      25  // Backend auth/login OK
+#define IR_SENSOR_PIN   34  // Optional helmet-worn indicator (Input only)
+
 // ---------- FALL DETECTION THRESHOLDS ----------
 #define FALL_THRESHOLD    2.5f     // 2.5G reduces false alarms from bumps
 #define NO_MOVE_TIME_MS   8000     // 8 seconds of no movement after impact = Fall Confirmed

@@ -25,6 +25,11 @@ bool cancelPressed = false;
 float lastKnownLat = 0.0;
 float lastKnownLng = 0.0;
 
+// ---------- DEMO STATUS VARIABLES ----------
+bool isBackendAuthOK = false;
+bool isAlertActive   = false;
+bool lastHelmetWorn  = false;
+
 // ---------- RUNTIME CONFIG VARIABLES ----------
 float currentFallThreshold = FALL_THRESHOLD;
 unsigned long currentNoMoveTimeMs = NO_MOVE_TIME_MS;
@@ -67,6 +72,36 @@ void sendBLE(const String &msg) {
     alertChar->setValue(msg.c_str());
     alertChar->notify();
     Serial.println("[BLE] Sent: " + msg);
+  }
+}
+
+// ============================================================
+// LED & SENSOR HELPERS
+// ============================================================
+void updateLEDStatus() {
+  // Green LED: System powered (always ON in loop if board is running)
+  digitalWrite(GREEN_LED, HIGH);
+
+  // Yellow LED: Backend login OK
+  digitalWrite(YELLOW_LED, isBackendAuthOK ? HIGH : LOW);
+
+  // Blue LED: GPS valid
+  bool hasGPS = (lastKnownLat != 0.0 && lastKnownLng != 0.0);
+  digitalWrite(BLUE_LED, hasGPS ? HIGH : LOW);
+
+  // Red LED: Alert active (solid or blinking handled in alert loop)
+  if (!isAlertActive) {
+    digitalWrite(RED_LED, LOW);
+  }
+}
+
+void checkIRSensor() {
+  // Simple check for helmet worn (assumes LOW = worn, HIGH = not worn)
+  // Low-risk: just logs state changes, doesn't block functionality
+  bool currentlyWorn = (digitalRead(IR_SENSOR_PIN) == LOW);
+  if (currentlyWorn != lastHelmetWorn) {
+    lastHelmetWorn = currentlyWorn;
+    Serial.println(currentlyWorn ? "[STATUS] Helmet WORN" : "[STATUS] Helmet REMOVED");
   }
 }
 
@@ -309,6 +344,9 @@ bool loginToServer() {
     lastLoginTime = millis();
     Serial.println("[AUTH] Login OK — token length=" + String(authToken.length()));
     
+    isBackendAuthOK = true;
+    updateLEDStatus();
+
     // Fetch device configuration thresholds after successful login
     fetchDeviceConfigFromServer();
     
@@ -316,6 +354,8 @@ bool loginToServer() {
   }
 
   Serial.println("[AUTH] Login FAILED — check SERVER_IP, username, password");
+  isBackendAuthOK = false;
+  updateLEDStatus();
   return false;
 }
 
@@ -486,6 +526,18 @@ void setup() {
   pinMode(CANCEL_BTN, INPUT_PULLUP);
   digitalWrite(BUZZER_PIN, LOW);
 
+  // ── LEDs & SENSORS ───────────────────────────────────────────────────────
+  pinMode(RED_LED, OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(BLUE_LED, OUTPUT);
+  pinMode(YELLOW_LED, OUTPUT);
+  pinMode(IR_SENSOR_PIN, INPUT);
+  
+  digitalWrite(RED_LED, LOW);
+  digitalWrite(GREEN_LED, HIGH); // Power on
+  digitalWrite(BLUE_LED, LOW);
+  digitalWrite(YELLOW_LED, LOW);
+
   // ── MPU6050 ─────────────────────────────────────────────────────────────
   Wire.begin(MPU_SDA, MPU_SCL);
 
@@ -537,6 +589,10 @@ void setup() {
 void loop() {
   // Always read GPS
   readGPS();
+  
+  // Status updates
+  updateLEDStatus();
+  checkIRSensor();
 
   // ── Token refresh every 11 hours ────────────────────────────────────────
   if (millis() - lastLoginTime > LOGIN_INTERVAL_MS) {
@@ -565,6 +621,9 @@ void loop() {
 
   // ── Fall detection ───────────────────────────────────────────────────────
   if (detectFall()) {
+    isAlertActive = true;
+    digitalWrite(RED_LED, HIGH);
+
     // Start intermittent buzzer to alert rider
     digitalWrite(BUZZER_PIN, HIGH);
     sendBLE("ALERT: Possible accident! Press cancel button within " +
@@ -588,7 +647,9 @@ void loop() {
 
       // Intermittent buzzer during cancel window (toggle every 500ms)
       if (millis() - buzzerTimer > 500) {
-        digitalWrite(BUZZER_PIN, !digitalRead(BUZZER_PIN));
+        bool toggle = !digitalRead(BUZZER_PIN);
+        digitalWrite(BUZZER_PIN, toggle);
+        digitalWrite(RED_LED, toggle); // Flash red LED with buzzer
         buzzerTimer = millis();
       }
 
@@ -615,8 +676,10 @@ void loop() {
       sendBLE("Alert cancelled by rider.");
     }
 
-    // Always silence buzzer at end of fall handling
+    // Always silence buzzer and reset alert status at end of fall handling
     digitalWrite(BUZZER_PIN, LOW);
+    isAlertActive = false;
+    updateLEDStatus();
   }
 
   delay(100);
