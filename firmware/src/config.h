@@ -11,6 +11,15 @@
 #define BUZZER_PIN  5
 #define CANCEL_BTN  4
 
+// ---------- COMMUNICATION MODES ----------
+#define USE_WIFI_HTTP true
+#define USE_GPRS_HTTP false
+#define USE_SMS_ALERT true
+
+// ---------- WI-FI CONFIG ----------
+#define WIFI_SSID         "placeholder"
+#define WIFI_PASSWORD     "placeholder"
+
 // ---------- DEMO LED & SENSOR PINS ----------
 #define RED_LED         12  // Fall/Alert active
 #define GREEN_LED       13  // System powered
@@ -23,7 +32,7 @@
 #define NO_MOVE_TIME_MS   8000     // 8 seconds of no movement after impact = Fall Confirmed
 
 // ---------- BLE CONFIG ----------
-#define BLE_DEVICE_NAME   "SmartHelmetX"
+#define BLE_DEVICE_NAME   "SmartHelmet"
 #define BLE_SERVICE_UUID  "0000FFE0-0000-1000-8000-00805F9B34FB"
 #define BLE_CHAR_UUID     "0000FFE1-0000-1000-8000-00805F9B34FB"
 
@@ -33,7 +42,7 @@
 
 // ---------- SERVER CONFIG ----------
 // Enter your backend's IPv4 address
-#define SERVER_IP         "192.168.1.109"      
+#define SERVER_IP         "192.168.1.64"      
 #define SERVER_PORT       8000
 #define API_USERNAME      "rider1"     // Django username
 #define API_PASSWORD      "rider123"   // Django password

@@ -5,6 +5,8 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
 #include "config.h"
 
 // ---------- OBJECTS ----------
@@ -174,19 +176,128 @@ bool isGSMReady() {
 }
 
 // ============================================================
+// WI-FI HELPERS
+// ============================================================
+void connectWiFi() {
+  if (WiFi.status() == WL_CONNECTED) return;
+  Serial.println("[WiFi] Connecting...");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  unsigned long startAttemptTime = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 20000) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("[WiFi] Connected");
+  } else {
+    Serial.println("[WiFi] Failed to connect");
+  }
+}
+
+bool wifiHttpPost(const String &endpoint, const String &body) {
+  if (WiFi.status() != WL_CONNECTED) {
+    connectWiFi();
+    if (WiFi.status() != WL_CONNECTED) return false;
+  }
+  
+  HTTPClient http;
+  String url = "http://" + String(SERVER_IP) + ":" + String(SERVER_PORT) + endpoint;
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Device-Secret", String(DEVICE_SECRET));
+  if (authToken.length() > 0) {
+    http.addHeader("Authorization", "Bearer " + authToken);
+  }
+  
+  int httpResponseCode = http.POST(body);
+  if (httpResponseCode == 200 || httpResponseCode == 201) {
+    http.end();
+    return true;
+  }
+  Serial.printf("[HTTP] POST failed: %d\n", httpResponseCode);
+  if (httpResponseCode > 0) {
+    Serial.println(http.getString());
+  }
+  http.end();
+  return false;
+}
+
+bool wifiHttpGetDeviceConfig() {
+  if (WiFi.status() != WL_CONNECTED) {
+    connectWiFi();
+    if (WiFi.status() != WL_CONNECTED) return false;
+  }
+
+  HTTPClient http;
+  String url = "http://" + String(SERVER_IP) + ":" + String(SERVER_PORT) + "/api/device-config/" + String(DEVICE_ID) + "/";
+  Serial.println("[CONFIG] Fetching config from: " + url);
+  http.begin(url);
+  http.addHeader("X-Device-Secret", String(DEVICE_SECRET));
+
+  int httpResponseCode = http.GET();
+  if (httpResponseCode == 200) {
+    String response = http.getString();
+    Serial.println("[CONFIG] Response: " + response);
+
+    int thresholdIdx = response.indexOf("\"fall_threshold\":");
+    if (thresholdIdx != -1) {
+      thresholdIdx += 17;
+      int endIdx = response.indexOf(",", thresholdIdx);
+      if (endIdx == -1) endIdx = response.indexOf("}", thresholdIdx);
+      if (endIdx != -1) {
+        String valStr = response.substring(thresholdIdx, endIdx);
+        float val = valStr.toFloat();
+        if (val > 0.0f) {
+          currentFallThreshold = val;
+          Serial.println("[CONFIG] Updated fall threshold to: " + String(currentFallThreshold));
+        }
+      }
+    }
+
+    int timeoutIdx = response.indexOf("\"no_move_timeout\":");
+    if (timeoutIdx != -1) {
+      timeoutIdx += 18;
+      int endIdx = response.indexOf(",", timeoutIdx);
+      if (endIdx == -1) endIdx = response.indexOf("}", timeoutIdx);
+      if (endIdx != -1) {
+        String valStr = response.substring(timeoutIdx, endIdx);
+        long val = valStr.toInt();
+        if (val > 0) {
+          currentNoMoveTimeMs = val;
+          Serial.println("[CONFIG] Updated no move timeout to: " + String(currentNoMoveTimeMs));
+        }
+      }
+    }
+    http.end();
+    return true;
+  }
+  
+  Serial.printf("[CONFIG] Fetch failed: %d\n", httpResponseCode);
+  http.end();
+  return false;
+}
+
+// ============================================================
 // HTTP POST (generic)
 // ============================================================
 bool httpPost(const String &endpoint, const String &body) {
-  if (!isGSMReady()) {
-    Serial.println("[HTTP] GSM not registered — skipping");
-    return false;
+  if (USE_WIFI_HTTP) {
+    if (wifiHttpPost(endpoint, body)) return true;
   }
 
-  // Ensure GPRS is alive before every HTTP attempt
-  if (!ensureGPRS()) {
-    Serial.println("[HTTP] GPRS unavailable — skipping");
-    return false;
-  }
+  if (USE_GPRS_HTTP) {
+    if (!isGSMReady()) {
+      Serial.println("[HTTP] GSM not registered — skipping");
+      return false;
+    }
+
+    // Ensure GPRS is alive before every HTTP attempt
+    if (!ensureGPRS()) {
+      Serial.println("[HTTP] GPRS unavailable — skipping");
+      return false;
+    }
 
   String url    = "http://" + String(SERVER_IP) + ":" + String(SERVER_PORT) + endpoint;
   int    bodyLen = body.length();
@@ -222,11 +333,14 @@ bool httpPost(const String &endpoint, const String &body) {
     return false;
   }
 
-  if (response.indexOf(",200,") != -1 || response.indexOf(",201,") != -1) {
-    return true;
+    if (response.indexOf(",200,") != -1 || response.indexOf(",201,") != -1) {
+      return true;
+    }
+
+    Serial.println("[HTTP] POST failed: " + response);
+    return false;
   }
 
-  Serial.println("[HTTP] POST failed: " + response);
   return false;
 }
 
@@ -234,14 +348,19 @@ bool httpPost(const String &endpoint, const String &body) {
 // DEVICE CONFIG FETCH
 // ============================================================
 bool fetchDeviceConfigFromServer() {
-  if (!isGSMReady()) {
-    Serial.println("[CONFIG] GSM not registered — skipping config fetch");
-    return false;
+  if (USE_WIFI_HTTP) {
+    if (wifiHttpGetDeviceConfig()) return true;
   }
-  if (!ensureGPRS()) {
-    Serial.println("[CONFIG] GPRS unavailable — skipping config fetch");
-    return false;
-  }
+
+  if (USE_GPRS_HTTP) {
+    if (!isGSMReady()) {
+      Serial.println("[CONFIG] GSM not registered — skipping config fetch");
+      return false;
+    }
+    if (!ensureGPRS()) {
+      Serial.println("[CONFIG] GPRS unavailable — skipping config fetch");
+      return false;
+    }
 
   String url = "http://" + String(SERVER_IP) + ":" + String(SERVER_PORT) + "/api/device-config/" + String(DEVICE_ID) + "/";
   Serial.println("[CONFIG] Fetching config from: " + url);
@@ -296,9 +415,9 @@ bool fetchDeviceConfigFromServer() {
         Serial.println("[CONFIG] Updated no move timeout to: " + String(currentNoMoveTimeMs));
       }
     }
+    return true;
   }
-
-  return true;
+  return false;
 }
 
 // ============================================================
@@ -306,54 +425,86 @@ bool fetchDeviceConfigFromServer() {
 // ============================================================
 bool loginToServer() {
   Serial.println("[AUTH] Logging in...");
-
-  // Verify GPRS before attempting login HTTP
-  if (!ensureGPRS()) {
-    Serial.println("[AUTH] GPRS not available — login aborted");
-    return false;
-  }
-
   String body    = "{\"username\":\"" + String(API_USERNAME) + "\",\"password\":\"" + String(API_PASSWORD) + "\"}";
-  int    bodyLen = body.length();
 
-  sendAT("AT+HTTPTERM", 500);
-  sendAT("AT+HTTPINIT", 1000);
-  sendAT("AT+HTTPPARA=\"CID\",1", 500);
-  sendAT("AT+HTTPPARA=\"URL\",\"http://" + String(SERVER_IP) + ":" + String(SERVER_PORT) + "/api/auth/login/\"", 500);
-  sendAT("AT+HTTPPARA=\"CONTENT\",\"application/json\"", 500);
-  sendAT("AT+HTTPDATA=" + String(bodyLen) + ",5000", 1000);
-  SerialGSM.print(body);
-
-  if (waitForGSMResponseOrCancel(3000)) {
-    Serial.println("[AUTH] Login cancelled");
-    sendAT("AT+HTTPTERM", 500);
-    return false;
+  if (USE_WIFI_HTTP) {
+    if (WiFi.status() != WL_CONNECTED) {
+      connectWiFi();
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      HTTPClient http;
+      String url = "http://" + String(SERVER_IP) + ":" + String(SERVER_PORT) + "/api/auth/login/";
+      http.begin(url);
+      http.addHeader("Content-Type", "application/json");
+      int httpResponseCode = http.POST(body);
+      if (httpResponseCode == 200) {
+        String response = http.getString();
+        int idx = response.indexOf("\"access\":\"");
+        if (idx != -1) {
+          idx += 10;
+          authToken     = response.substring(idx, response.indexOf("\"", idx));
+          lastLoginTime = millis();
+          Serial.println("[AUTH] Login OK");
+          isBackendAuthOK = true;
+          updateLEDStatus();
+          fetchDeviceConfigFromServer();
+          http.end();
+          return true;
+        }
+      }
+      Serial.printf("[AUTH] Wi-Fi Login FAILED: %d\n", httpResponseCode);
+      http.end();
+    }
   }
 
-  sendAT("AT+HTTPACTION=1", 15000);
-  sendAT("AT+HTTPREAD", 1000);
+  if (USE_GPRS_HTTP) {
+    // Verify GPRS before attempting login HTTP
+    if (!ensureGPRS()) {
+      Serial.println("[AUTH] GPRS not available — login aborted");
+      // Fall through to failure
+    } else {
 
-  String response = readGSMResponse(3000);
-  sendAT("AT+HTTPTERM", 500);
-  Serial.println("[AUTH] Response: " + response);
+      int    bodyLen = body.length();
 
-  int idx = response.indexOf("\"access\":\"");
-  if (idx != -1) {
-    idx += 10;
-    authToken     = response.substring(idx, response.indexOf("\"", idx));
-    lastLoginTime = millis();
-    Serial.println("[AUTH] Login OK — token length=" + String(authToken.length()));
-    
-    isBackendAuthOK = true;
-    updateLEDStatus();
+      sendAT("AT+HTTPTERM", 500);
+      sendAT("AT+HTTPINIT", 1000);
+      sendAT("AT+HTTPPARA=\"CID\",1", 500);
+      sendAT("AT+HTTPPARA=\"URL\",\"http://" + String(SERVER_IP) + ":" + String(SERVER_PORT) + "/api/auth/login/\"", 500);
+      sendAT("AT+HTTPPARA=\"CONTENT\",\"application/json\"", 500);
+      sendAT("AT+HTTPDATA=" + String(bodyLen) + ",5000", 1000);
+      SerialGSM.print(body);
 
-    // Fetch device configuration thresholds after successful login
-    fetchDeviceConfigFromServer();
-    
-    return true;
+      if (waitForGSMResponseOrCancel(3000)) {
+        Serial.println("[AUTH] Login cancelled");
+        sendAT("AT+HTTPTERM", 500);
+      } else {
+        sendAT("AT+HTTPACTION=1", 15000);
+        sendAT("AT+HTTPREAD", 1000);
+
+        String response = readGSMResponse(3000);
+        sendAT("AT+HTTPTERM", 500);
+        Serial.println("[AUTH] Response: " + response);
+
+        int idx = response.indexOf("\"access\":\"");
+        if (idx != -1) {
+          idx += 10;
+          authToken     = response.substring(idx, response.indexOf("\"", idx));
+          lastLoginTime = millis();
+          Serial.println("[AUTH] Login OK — token length=" + String(authToken.length()));
+          
+          isBackendAuthOK = true;
+          updateLEDStatus();
+
+          // Fetch device configuration thresholds after successful login
+          fetchDeviceConfigFromServer();
+          
+          return true;
+        }
+      }
+    }
   }
 
-  Serial.println("[AUTH] Login FAILED — check SERVER_IP, username, password");
+  Serial.println("[AUTH] Login FAILED");
   isBackendAuthOK = false;
   updateLEDStatus();
   return false;
@@ -378,10 +529,6 @@ String getGoogleMapsLink() {
 }
 
 void sendGPSToServer(float lat, float lng) {
-  if (authToken.length() == 0) {
-    Serial.println("[GPS] No token — skipping server send");
-    return;
-  }
   Serial.println("[GPS] Sending...");
   String body = "{\"device_id\":\"" + String(DEVICE_ID) + "\","
                 "\"latitude\":"  + String(lat, 6) + ","
@@ -398,14 +545,6 @@ void sendGPSToServer(float lat, float lng) {
 void sendSOSToServer(float lat, float lng) {
   String link = getGoogleMapsLink();
   String smsMsg = "ACCIDENT ALERT! SmartHelmetX detected a crash.\nLocation: " + link;
-
-  // If token is missing, execute SMS-only fallback immediately
-  if (authToken.length() == 0) {
-    Serial.println("[ALERT] No auth token — SMS-only fallback!");
-    sendSMS(smsMsg);
-    sendBLE(smsMsg);
-    return;
-  }
 
   Serial.println("[ALERT] Sending to server...");
 
@@ -438,10 +577,6 @@ void sendSOSToServer(float lat, float lng) {
 // SENSOR DATA
 // ============================================================
 void sendSensorToServer(float ax, float ay, float az, float gx, float gy, float gz) {
-  if (authToken.length() == 0) {
-    Serial.println("[SENSOR] No token — skipping");
-    return;
-  }
   Serial.println("[SENSOR] Sending...");
   String body = "{\"device_id\":\"" + String(DEVICE_ID) + "\","
                 "\"accel_x\":" + String(ax, 3) + ","
@@ -459,6 +594,7 @@ void sendSensorToServer(float ax, float ay, float az, float gx, float gy, float 
 // SMS
 // ============================================================
 void sendSMS(const String &text) {
+  if (!USE_SMS_ALERT) return;
   Serial.println("[SMS] Sending to " + String(EMERGENCY_NUMBER) + "...");
   sendAT("AT+CMGF=1", 500);
   SerialGSM.print("AT+CMGS=\"");
@@ -568,14 +704,22 @@ void setup() {
   setupBLE();
 
   // ── GSM Network & GPRS ───────────────────────────────────────────────────
-  Serial.println("[GSM] Waiting for network registration...");
-  delay(5000);
-  sendAT("AT",       1000);
-  sendAT("AT+CREG?", 1000);
+  if (USE_GPRS_HTTP || USE_SMS_ALERT) {
+    Serial.println("[GSM] Waiting for network registration...");
+    delay(5000);
+    sendAT("AT",       1000);
+    sendAT("AT+CREG?", 1000);
+  }
 
-  // Initial GPRS setup via ensureGPRS() instead of inline AT calls
-  // (so the same logic is reused on every subsequent reconnect)
-  ensureGPRS();
+  if (USE_GPRS_HTTP) {
+    // Initial GPRS setup via ensureGPRS() instead of inline AT calls
+    // (so the same logic is reused on every subsequent reconnect)
+    ensureGPRS();
+  }
+
+  if (USE_WIFI_HTTP) {
+    connectWiFi();
+  }
 
   // ── Initial login ────────────────────────────────────────────────────────
   loginToServer();
