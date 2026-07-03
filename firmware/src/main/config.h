@@ -17,8 +17,8 @@
 #define USE_SMS_ALERT true
 
 // ---------- WI-FI CONFIG ----------
-#define WIFI_SSID         "placeholder"
-#define WIFI_PASSWORD     "placeholder"
+#define WIFI_SSID         "Sumit House_2.4"
+#define WIFI_PASSWORD     "Sumit123456"
 
 // ---------- DEMO LED & SENSOR PINS ----------
 #define RED_LED         12  // Fall/Alert active
@@ -51,10 +51,10 @@
 
 // ---------- GSM / SIM CONFIG ----------
 // Change to match your SIM provider APN
-#define GSM_APN           "ntc"              
+#define GSM_APN           "ncell"              
 
 // ---------- TIMING ----------
-#define GPS_SEND_INTERVAL_MS      30000UL    // GPS updates every 30s
+#define GPS_SEND_INTERVAL_MS      20000UL    // GPS updates every 30s
 #define SENSOR_SEND_INTERVAL_MS   10000UL    // Sensor updates every 10s
 #define LOGIN_INTERVAL_MS         39600000UL // Server login refresh every 11 hours
 

@@ -402,17 +402,18 @@ bool fetchDeviceConfigFromServer() {
   }
 
   // Parse no_move_timeout
-  int timeoutIdx = response.indexOf("\"no_move_timeout\":");
-  if (timeoutIdx != -1) {
-    timeoutIdx += 18;
-    int endIdx = response.indexOf(",", timeoutIdx);
-    if (endIdx == -1) endIdx = response.indexOf("}", timeoutIdx);
-    if (endIdx != -1) {
-      String valStr = response.substring(timeoutIdx, endIdx);
-      long val = valStr.toInt();
-      if (val > 0) {
-        currentNoMoveTimeMs = val;
-        Serial.println("[CONFIG] Updated no move timeout to: " + String(currentNoMoveTimeMs));
+    int timeoutIdx = response.indexOf("\"no_move_timeout\":");
+    if (timeoutIdx != -1) {
+      timeoutIdx += 18;
+      int endIdx = response.indexOf(",", timeoutIdx);
+      if (endIdx == -1) endIdx = response.indexOf("}", timeoutIdx);
+      if (endIdx != -1) {
+        String valStr = response.substring(timeoutIdx, endIdx);
+        long val = valStr.toInt();
+        if (val > 0) {
+          currentNoMoveTimeMs = val;
+          Serial.println("[CONFIG] Updated no move timeout to: " + String(currentNoMoveTimeMs));
+        }
       }
     }
     return true;
